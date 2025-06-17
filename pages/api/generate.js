@@ -10,12 +10,7 @@ export default async function handler(req, res) {
   let posts = [];
   if (fs.existsSync(postsPath)) {
     const raw = fs.readFileSync(postsPath, "utf-8");
-    try {
-      posts = raw ? JSON.parse(raw) : [];
-    } catch (e) {
-      console.error("Failed to parse posts.json:", e);
-      posts = [];
-    }
+    posts = raw ? JSON.parse(raw) : [];
   }
 
   const existing = posts.find((p) => p.date === today);
@@ -30,17 +25,11 @@ export default async function handler(req, res) {
       {
         headers: {
           Authorization: `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
-          "Content-Type": "application/json",
         },
       }
     );
 
-    const generated = hfRes.data?.[0]?.generated_text?.trim();
-
-    if (!generated) {
-      console.warn("No text returned from HuggingFace API.");
-      return res.status(500).json({ error: "Empty response from HuggingFace API." });
-    }
+    const generated = hfRes.data?.[0]?.generated_text || "Couldn't generate post.";
 
     const newPost = {
       day: posts.length + 1,
@@ -50,11 +39,15 @@ export default async function handler(req, res) {
     };
 
     posts.push(newPost);
-    fs.writeFileSync(postsPath, JSON.stringify(posts, null, 2));
+
+    // ✅ Only write to disk if running locally
+    if (process.env.VERCEL !== "1") {
+      fs.writeFileSync(postsPath, JSON.stringify(posts, null, 2));
+    }
 
     return res.status(200).json(newPost);
   } catch (err) {
-    console.error("HuggingFace Error:", err?.response?.data || err.message || err);
+    console.error("HuggingFace Error:", err.message || err);
     return res.status(500).json({ error: "Failed to generate post." });
   }
 }
